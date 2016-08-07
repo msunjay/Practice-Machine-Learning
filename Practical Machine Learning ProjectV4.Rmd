@@ -1,0 +1,219 @@
+---
+title: "PML Course Project"
+author: "SunjayM"
+date: "August 5, 2016"
+output: html_document
+---
+
+# Practical Machine Learning Project: Measurements of Accelerometer Data
+
+### Background 
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+### Source of Data and Credit
+Data
+The training data for this project are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+###### Credit/ Resources 
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har
+
+### Executive Summary of Analysis
+
+In this project we will attempt to predict the data points provideded from the links above directing us to a training and test datasets. 
+
+Our initial step will be to load the necessary packages required for this particular analysis.
+
+Our second step will be to read the data into RStudio and understand the data with an initial exploratory analysis. Next we will split the training data set into a 60:40 ratio of Training and validation data respectively. Once the data is partitioned, look for any NA values or anomolies and clean to create a more transparent analysis. 
+
+Next we need to implement the various machine learning algorithms to our partioned testing dataset. The various algorithms that we will run are the Decision Tree, Random Forest, and Support Machine Vector models to predict the best method. 
+
+Once the algorithms have been implemented, we need to scrutnize the various metrics for performance and accuracy. Lastly we will isolate the algorithm with the higest accuracy to systematically predict the test dataset provided. 
+
+####Packages to Load for Analysis
+```{r}
+
+set.seed(21191)
+
+library(RGtk2) #For the Libatk library being used in Rattle
+library(ggplot2) 
+library(dplyr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(e1071)
+
+```
+
+#### Loading Data
+Extract the data from the working directory which has the data from the URLs provided above
+```{r}
+
+setwd("~/R/Data Sets/Practical Machine Learning")
+
+training<-read.csv("TrainingSet.csv", sep = ",", header = TRUE)
+testing<-read.csv("TestingSet1.csv", sep = ",", header = TRUE)
+
+```
+
+#### Partioning of Data to Test and Train sets to create model and check its accuracy
+
+Partition the training data into 60% training and 40% validation set and check dimensions to verify partition occured as designed.
+
+```{r}
+inTrain <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+mydataTrain <- training[inTrain, ]; 
+mydataTest <- training[-inTrain, ]
+
+```
+Verify the dimensions of the new datasets created by partioning the training dataset
+
+```{r}
+dim(mydataTrain)
+dim(mydataTest)
+
+```
+
+#### Cleaning Data for Analysis
+The two sets created by partitioning the data are the same since they both returned with 160 variables. Sifting through the set further, you'll notice there are NA values in the sets and need to be removed. Therefore we are creating a new dataset removing the NAs from the Test and Training datasets where 90% of the columns are populated with null values. 
+
+```{r}
+mydataTrain <- mydataTrain[, colMeans(is.na(mydataTrain)) < 0.1]
+mydataTest <- mydataTest[, colMeans(is.na(mydataTest)) < 0.1]
+
+```
+New Train and Test datasets can be checked again to determine any changes in new datasets. 
+
+```{r}
+dim(mydataTrain)
+
+dim(mydataTest)
+
+head(mydataTrain[1:15])
+
+```
+Furthermore we can remove the first five columns which are ID columns, and timestamps that we do not need for this particular analysis.
+```{r}
+mydataTrain <- mydataTrain[, -(1:5)]
+mydataTest <- mydataTest[, -(1:5)]
+
+dim(mydataTrain)
+dim(mydataTest)
+
+```
+Looking further into the dataset, we notice there are variables with zerovariance and should be removed to create more lucid models.
+
+```{r}
+close.2.zero <- nearZeroVar(mydataTrain)
+mydataTrain <- mydataTrain[, -close.2.zero]
+mydataTest <- mydataTest[, -close.2.zero]
+
+dim(mydataTrain)
+dim(mydataTest)
+
+```
+We have reduced the number of variables from 160 initially to 54 after multiple iterations to clean the dataset. Since both the mydataTest and mydataTrain have an equal number of variables, we can implement our prediction algorithms in an easier fashion.
+
+==========
+
+# Prediction Algorithms
+Noe that we have cleaned up the data we will test and validate, we can go ahead and implement into the different algorithms to create the best predicint model. 
+
+
+We will explore three distinct machine learning algorithms:
+1.) Decision Tree (rpart)
+2.) Random Forest (randomForest)
+3.) Support Machine Vector (svm)
+
+
+#### 1. Decision Tree (rpart)
+
+```{r}
+train.dt.model <- train(classe ~ ., method = "rpart", data = mydataTrain)
+predict.dt.model <- predict(train.dt.model, mydataTest)
+cm.dt <- confusionMatrix(predict.dt.model, mydataTest$classe)
+print(train.dt.model$finalModel)
+```
+
+```{r}
+fancyRpartPlot(train.dt.model$finalModel,cex=.5,under.cex=1,shadow.offset=0)
+```
+
+#### 2. Random Forest
+Using randomForest package with a 10-Fold Cross-Validation
+
+```{r}
+train.rf.model <- randomForest(classe ~ ., data = mydataTrain, mtry = 3, ntree = 200, do.trace = 25, cv.fold = 10)
+
+Predict.rf.model <- predict(train.rf.model, mydataTest)
+cm.rf <- confusionMatrix(Predict.rf.model, mydataTest$classe)
+```
+
+#### Variable Importance According to Random Forest
+```{r}
+imp.rf <- importance(train.rf.model)
+imp.rf.arranged <- arrange(as.data.frame(imp.rf), desc(MeanDecreaseGini))
+
+head(imp.rf.arranged, 15)
+```
+
+```{r}
+varImpPlot(train.rf.model, n.var = 15, sort = TRUE, main = "Importance of Variables", lcolor = "blue", bg = "green")
+```
+
+Using Random Forest we can find the importance of each variable independently from others.
+
+#### 3. Support Vector Machine
+```{r}
+train.svm.model <- svm(classe ~ ., data = mydataTrain)
+predict.svm.model <- predict(train.svm.model, mydataTest)
+cm.svm <- confusionMatrix(predict.svm.model, mydataTest$classe)
+```
+
+#####Compare Accuracies
+```{r}
+decisiontree <- cm.dt$overall[1]
+RndForest <- cm.rf$overall[1]
+SupVecMach <- cm.svm$overall[1]
+
+cm.dataframe <- data.frame(Algorithm = c("Decision Tree", "Random Forest", "Support Vector Machine"), Index = c("dt", "rf", "svm"), Accuracy = c(decisiontree, RndForest, SupVecMach))
+cm.dataframe <- arrange(cm.dataframe, desc(Accuracy))
+cm.dataframe
+```
+
+We can clearly see that Random Forest has the highest accuracy at ~ 99.5%, followed by Support Vector Machine at ~ 94.2%. Decision Tree gave us the lowest accuracy at ~ 49.4%.
+
+#### Errors
+*Calculate the In Sample Error
+```{r}
+InSampError.rf <- (1 - 0.994)*100
+InSampError.rf
+```
+
+Here following the calculation, we can see that the In Sample error is 0.6%
+
+*Calculate the Out of Sample Error
+```{r}
+print(train.rf.model)
+```
+
+We can see that the Out of Bag or Out of Sample Error of Random Forest with a 10-Fold Cross Validation is 0.53%, which aligns well with the confusion matrix.
+
+However, it is worthy to note that Random Forest Out of Bag estimation does not require Cross Validation to decrease bias.
+
+The In Sample Error is actually higher than the Out of Bag, which is definitely considered an anomaly. It might be due to variance in the estimation of the error rates or due to overfitting. Nonetheless our prediction in the next section proves our model highly accurate.
+
+#### Final Prediction Using Random Forest
+Prediction Results of Algorithm with Highest Accuracy (Random Forest)
+
+```{r}
+fp.rf <- predict(train.rf.model, newdata=testing)
+fp.rf
+```
+
+Using Random Forest to predict our Testing Dataset is the best decision. And it accurately predicted all 20 cases.
